@@ -1,0 +1,35 @@
+[project]
+name = "conduit-mcp"
+version = "0.1.0"
+description = "An MCP server that gives AI agents a sandboxed local filesystem and live GitHub lookups, over both stdio and Streamable HTTP."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=2.0.0",
+    "httpx>=0.28",
+    "python-dotenv>=1.0",
+    "pyjwt[crypto]>=2.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+conduit = "conduit.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: hits the live GitHub API and/or spawns real server subprocesses; needs network (deselect with -m \"not integration\")",
+]
