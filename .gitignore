@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+conduit-env/
+.env
+
+# Keep the shipped sample; ignore anything a user adds while trying Conduit out
+workspace/*
+!workspace/notes/
+workspace/notes/*
+!workspace/notes/welcome.md
