@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Conduit — a secure, dual-transport MCP server for sandboxed workspaces and live GitHub lookups.">
+  <title>Conduit — Secure MCP Server</title>
+  <style>
+    :root{--bg:#08090d;--panel:#101218;--panel2:#151821;--text:#f5f7fb;--muted:#9aa3b2;--line:#252a36;--accent:#8b7cff;--accent2:#5eead4;--max:1120px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 80% 0%,#1b1740 0,transparent 35%),var(--bg);color:var(--text);font:16px/1.65 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    a{color:inherit}.wrap{width:min(var(--max),calc(100% - 40px));margin:auto}.nav{height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{font-weight:800;letter-spacing:.02em;font-size:20px}.navlinks{display:flex;gap:22px;color:var(--muted);font-size:14px}.navlinks a{text-decoration:none}.navlinks a:hover{color:var(--text)}
+    .hero{padding:100px 0 76px;max-width:850px}.eyebrow{color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:.14em;font-size:12px}.hero h1{font-size:clamp(52px,9vw,94px);line-height:.95;letter-spacing:-.06em;margin:18px 0 25px}.hero p{font-size:21px;color:var(--muted);max-width:760px}.buttons{display:flex;gap:12px;flex-wrap:wrap;margin-top:32px}.btn{display:inline-flex;padding:12px 18px;border:1px solid var(--line);border-radius:10px;text-decoration:none;font-weight:700}.btn.primary{background:var(--text);color:#08090d;border-color:var(--text)}.btn:hover{transform:translateY(-1px)}
+    section{padding:72px 0;border-top:1px solid var(--line)}h2{font-size:38px;letter-spacing:-.035em;margin:0 0 12px}h3{margin:0 0 8px}.lead{color:var(--muted);max-width:720px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:32px}.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:22px}.card p{color:var(--muted);margin-bottom:0}.arch{background:#05060a;border:1px solid var(--line);border-radius:14px;padding:25px;overflow:auto;margin-top:28px;color:#d7dbea;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:32px}.metric{border-left:2px solid var(--accent);padding:12px 18px;background:var(--panel)}.metric strong{display:block;font-size:31px}.metric span{color:var(--muted);font-size:13px}.table{width:100%;border-collapse:collapse;margin-top:30px;font-size:14px}.table th,.table td{text-align:left;padding:13px 10px;border-bottom:1px solid var(--line)}.table th{color:var(--muted);font-weight:600}.code{background:#05060a;border:1px solid var(--line);border-radius:10px;padding:18px;overflow:auto;color:#d7dbea;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}.security{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:30px}.tag{display:inline-block;border:1px solid #2f3544;border-radius:999px;padding:4px 9px;margin:4px 4px 0 0;color:#c5cad5;font-size:12px}.footer{padding:45px 0;color:var(--muted);display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--line);font-size:13px}
+    @media(max-width:760px){.navlinks{display:none}.hero{padding-top:65px}.grid,.metrics,.security{grid-template-columns:1fr}h2{font-size:31px}.hero p{font-size:18px}.wrap{width:min(var(--max),calc(100% - 28px))}}
+  </style>
+</head>
+<body>
+  <header class="wrap nav"><div class="brand">Conduit</div><nav class="navlinks"><a href="#architecture">Architecture</a><a href="#security">Security</a><a href="#benchmarks">Benchmarks</a><a href="#quickstart">Quickstart</a><a href="https://github.com/devXyi/conduit-mcp">GitHub ↗</a></nav></header>
+
+  <main>
+    <div class="wrap hero">
+      <div class="eyebrow">Model Context Protocol · Python</div>
+      <h1>A serious MCP server.</h1>
+      <p>Conduit gives AI agents a sandboxed local workspace and live GitHub lookups over stdio and Streamable HTTP — with OAuth 2.1 resource-server authentication, session resumability, security boundaries, and server-side tool composition.</p>
+      <div class="buttons"><a class="btn primary" href="https://github.com/devXyi/conduit-mcp">View source</a><a class="btn" href="#quickstart">Get started</a></div>
+    </div>
+
+    <section id="architecture"><div class="wrap"><h2>One codebase. Two transports.</h2><p class="lead">Transport is a binding concern. The same MCP server, tools, prompts, resources, authentication, and business logic are reused whether a client connects locally or over HTTP.</p>
+      <pre class="arch">MCP Client
+    │
+    ├── stdio ───────────────┐
+    │                        ▼
+    └── Streamable HTTP ──► cli.py
+                             │
+                             ▼
+                         server.py
+                    ┌────────┼─────────┐
+                    ▼        ▼         ▼
+                 Auth    Security   Tools
+                    │                  │
+                    ▼             ┌────┴────┐
+                  JWKS            Files    GitHub
+                                       
+                    └────── resumability ──────┘</pre>
+      <div class="grid"><article class="card"><h3>Tools</h3><p>Filesystem, GitHub, workspace indexing, and composed research operations.</p></article><article class="card"><h3>Prompts</h3><p>Reusable commands for workspace summaries, repository health checks, and explanations.</p></article><article class="card"><h3>Resource</h3><p><code>workspace://tree</code> exposes a browsable view of the current workspace.</p></article></div>
+    </div></section>
+
+    <section><div class="wrap"><h2>Built around real engineering concerns.</h2><p class="lead">Conduit treats MCP as a systems problem: trust boundaries, authentication, failure modes, protocol behavior, and measurable performance.</p><div class="grid"><article class="card"><h3>OAuth 2.1 resource server</h3><p>Bearer-token verification against an external Authorization Server's JWKS, with issuer, audience, expiry, and signature validation.</p></article><article class="card"><h3>Session resumability</h3><p>HTTP streams use a bounded event store so reconnecting clients can replay events they missed.</p></article><article class="card"><h3>Server-side composition</h3><p><code>research_repo</code> orchestrates multiple operations concurrently and isolates partial failures.</p></article><article class="card"><h3>Sandboxed filesystem</h3><p>Workspace paths are resolved and checked before filesystem access, blocking traversal and absolute-path escapes.</p></article><article class="card"><h3>Untrusted-content boundaries</h3><p>Tool output is treated as data rather than instructions, with the threat-model limitations explicitly documented.</p></article><article class="card"><h3>Real integration tests</h3><p>Tests exercise real MCP subprocesses, HTTP sockets, JWTs, JWKS endpoints, OAuth rejection paths, and key rotation.</p></article></div></div></section>
+
+    <section id="security"><div class="wrap"><h2>Security is part of the design.</h2><p class="lead">Conduit distinguishes between protecting the caller and protecting the agent from untrusted content flowing through a legitimate tool call.</p><div class="security"><div class="card"><h3>Authentication</h3><span class="tag">OAuth 2.1</span><span class="tag">RS256</span><span class="tag">JWKS</span><span class="tag">RFC 8707 audience</span><span class="tag">exp / nbf</span><span class="tag">issuer validation</span><p>Conduit never issues credentials. A configured external Authorization Server supplies tokens; Conduit verifies them on the MCP HTTP path.</p></div><div class="card"><h3>Threat model</h3><span class="tag">Path traversal</span><span class="tag">Confused deputy</span><span class="tag">Prompt injection</span><span class="tag">Resource exhaustion</span><p>The project documents what is mitigated, what is only partially mitigated, and what is deliberately outside the shipped attack surface.</p></div></div></div></section>
+
+    <section id="benchmarks"><div class="wrap"><h2>Measured, not marketed.</h2><p class="lead">The benchmark runs the same trivial <code>list_directory(".")</code> call so transport, protocol, and authentication overhead can be compared directly.</p><div class="metrics"><div class="metric"><strong>0.69 ms</strong><span>in-process mean</span></div><div class="metric"><strong>5.59 ms</strong><span>HTTP sequential, no auth</span></div><div class="metric"><strong>8.72 ms</strong><span>HTTP sequential, auth</span></div></div><table class="table"><thead><tr><th>Scenario</th><th>Mean</th><th>Median</th><th>p95</th></tr></thead><tbody><tr><td>In-process</td><td>0.69 ms</td><td>0.67 ms</td><td>0.86 ms</td></tr><tr><td>stdio, fresh session</td><td>1036.66 ms</td><td>1031.43 ms</td><td>1101.65 ms</td></tr><tr><td>HTTP, sequential, no auth</td><td>5.59 ms</td><td>5.43 ms</td><td>6.85 ms</td></tr><tr><td>HTTP, sequential, auth</td><td>8.72 ms</td><td>5.88 ms</td><td>46.34 ms</td></tr><tr><td>HTTP, 20 concurrent, no auth</td><td>262.16 ms</td><td>274.53 ms</td><td>301.71 ms</td></tr><tr><td>HTTP, 20 concurrent, auth</td><td>346.38 ms</td><td>375.40 ms</td><td>386.37 ms</td></tr></tbody></table><p class="lead" style="margin-top:18px;font-size:13px">These are directional measurements from shared, non-isolated hardware. The repository includes a regenerable benchmark script and documents the interpretation and limitations.</p></div></section>
+
+    <section id="quickstart"><div class="wrap"><h2>Run it locally.</h2><p class="lead">Conduit is designed to work with local MCP clients or as a network-reachable Streamable HTTP server.</p><pre class="code">git clone https://github.com/devXyi/conduit-mcp.git
+cd conduit-mcp
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# Local MCP client
+conduit --transport stdio
+
+# Network transport
+conduit --transport http --port 8000</pre><div class="buttons"><a class="btn primary" href="https://github.com/devXyi/conduit-mcp#readme">Read the documentation</a><a class="btn" href="https://github.com/devXyi/conduit-mcp">Browse the code</a></div></div></section>
+  </main>
+
+  <footer class="wrap footer"><span>Conduit · MCP infrastructure for agents</span><span>Built by <a href="https://github.com/devXyi">devXyi</a></span></footer>
+</body>
+</html>
