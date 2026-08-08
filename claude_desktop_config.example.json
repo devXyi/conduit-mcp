@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "conduit": {
+      "command": "conduit",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "CONDUIT_WORKSPACE": "/absolute/path/to/conduit-mcp/workspace",
+        "GITHUB_TOKEN": ""
+      }
+    }
+  }
+}
