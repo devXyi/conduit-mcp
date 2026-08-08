@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: conduit-mcp
+    runtime: python
+    plan: free
+    buildCommand: pip install .
+    startCommand: conduit --transport http --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: CONDUIT_HOST
+        value: 0.0.0.0
+      - key: CONDUIT_WORKSPACE
+        value: /tmp/conduit-workspace
+      - key: CONDUIT_AUTH_ISSUER
+        sync: false
+      - key: CONDUIT_AUTH_AUDIENCE
+        value: https://conduit-mcp.onrender.com/mcp
+      - key: CONDUIT_AUTH_JWKS_URL
+        sync: false
+      - key: CONDUIT_AUTH_REQUIRED_SCOPES
+        value: conduit:read
+      - key: GITHUB_TOKEN
+        sync: false
