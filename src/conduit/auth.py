@@ -14,10 +14,15 @@ from jwt.algorithms import RSAAlgorithm
 
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
+from mcp.server.mcpserver import Context
 
 from .config import AuthConfig
 
 DEFAULT_ALGORITHMS = ["RS256"]
+
+
+class InsufficientScopeError(PermissionError):
+    """Raised when an authenticated caller lacks a tool-specific capability."""
 
 
 def claims_to_access_token(token: str, claims: dict[str, Any]) -> AccessToken:
@@ -34,6 +39,23 @@ def claims_to_access_token(token: str, claims: dict[str, Any]) -> AccessToken:
         subject=claims.get("sub"),
         claims=claims,
     )
+
+
+def require_scope(ctx: Context, required_scope: str) -> AccessToken:
+    """Require a per-tool OAuth scope from the authenticated HTTP request.
+
+    The MCP server's global `required_scopes` gate authenticates the resource
+    request, while this helper enforces finer-grained capabilities at the tool
+    boundary. Local/in-process calls without an authenticated request are
+    denied rather than being treated as privileged.
+    """
+    request = getattr(ctx.request_context, "request", None)
+    user = getattr(request, "user", None)
+    access_token = getattr(user, "access_token", None)
+    scopes = getattr(access_token, "scopes", ())
+    if access_token is None or required_scope not in scopes:
+        raise InsufficientScopeError(f"Required scope: {required_scope}")
+    return access_token
 
 
 class JWKSError(Exception):
