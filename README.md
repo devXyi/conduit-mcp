@@ -19,7 +19,7 @@
 
 ## What is Conduit?
 
-Conduit is a Python implementation of the **Model Context Protocol (MCP)** that gives AI agents controlled access to a sandboxed workspace, live GitHub lookups, and narrowly scoped server-side integrations.
+Conduit is a Python implementation of the **Model Context Protocol (MCP)** that gives AI agents controlled access to a sandboxed workspace and live public GitHub lookups.
 
 It runs the same MCP server over **local stdio** or **remote Streamable HTTP**.
 
@@ -37,23 +37,23 @@ It runs the same MCP server over **local stdio** or **remote Streamable HTTP**.
                 │ MCP server · tools · security    │
                 └───────────────┬──────────────────┘
                                 │
-                  ┌─────────────┼─────────────┐
-                  ▼             ▼             ▼
-              Workspace      GitHub         Auth0
-                tools         tools       admin tools
-                                
+                  ┌─────────────┴─────────────┐
+                  ▼                           ▼
+              Workspace                    GitHub
+                tools                       tools
+
                          OAuth / JWT boundary
                                 │
                               Auth0
 ```
+
+**Security boundary:** Conduit's public MCP surface deliberately excludes Auth0 Management API operations. Server-side Auth0 Management API credentials, if configured for internal operations, are not delegated to MCP callers.
 
 ---
 
 ## 🟢 Live integration status
 
 Conduit v0.1.0 has been validated end-to-end against the deployed Render service with a **separate Auth0 Machine-to-Machine client**.
-
-Verified flow:
 
 ```text
 Auth0 Client Credentials
@@ -75,7 +75,7 @@ github_repo_info
 GitHub repository metadata returned
 ```
 
-The remote test successfully returned `HTTP 200`, negotiated MCP protocol `2025-06-18`, discovered the deployed tool surface, and executed `github_repo_info` against `devXyi/conduit-mcp` with `isError: false`.
+The remote test successfully returned `HTTP 200`, negotiated MCP protocol `2025-06-18`, discovered the public tool surface, and executed `github_repo_info` against `devXyi/conduit-mcp` with `isError: false`.
 
 This is an integration proof, not a synthetic health check.
 
@@ -90,14 +90,14 @@ This is an integration proof, not a synthetic health check.
 - **Resumable HTTP sessions** — bounded event replay using `Last-Event-ID`.
 - **Sandboxed filesystem** — traversal and absolute-path escapes are blocked.
 - **GitHub intelligence** — repository metadata, search, profiles, and composed research.
-- **Server-side Auth0 administration** — narrowly scoped application lookup tools; credentials remain server-side.
 - **Untrusted-content boundary** — external text is treated as data, not trusted instructions.
+- **Internal credential isolation** — Auth0 Management API credentials are not exposed as MCP tools.
 - **Real integration tests** — authenticated MCP round trips, local JWKS, key rotation, and protocol behavior.
 - **Reproducible benchmarks** — transport and authentication overhead is measured rather than guessed.
 
 ---
 
-## 🧰 Tool surface
+## 🧰 Public MCP tool surface
 
 | Category | Tool | Purpose |
 |---|---|---|
@@ -110,8 +110,6 @@ This is an integration proof, not a synthetic health check.
 | GitHub | `github_search_repos` | Search public repositories |
 | GitHub | `github_user_profile` | Public GitHub profile summary |
 | GitHub | `research_repo` | Composed repository research workflow |
-| Auth0 | `auth0_list_applications` | List Auth0 applications using Conduit's server-side credentials |
-| Auth0 | `auth0_get_application` | Fetch one Auth0 application by client ID |
 
 ### MCP prompts
 
@@ -131,7 +129,7 @@ workspace://tree
 
 ## 🚀 Use the hosted Conduit
 
-The production-style Render endpoint is:
+Production MCP endpoint:
 
 ```text
 https://conduit-mcp-nfmm.onrender.com/mcp
@@ -155,13 +153,12 @@ Your application
   Conduit MCP
       │
       ├── Workspace
-      ├── GitHub
-      └── server-side Auth0 tools
+      └── GitHub
 ```
 
 See [`docs/REMOTE_CLIENT.md`](./docs/REMOTE_CLIENT.md) for the complete remote setup and troubleshooting guide.
 
-### Auth0 configuration used by the deployment
+### Current Conduit OAuth configuration
 
 ```text
 Issuer:
@@ -188,63 +185,17 @@ A remote Streamable HTTP client should perform:
 5. call tools/list or tools/call
 ```
 
-Opening `/mcp` in a normal browser without a bearer token is expected to fail. A request with a valid token but without a valid MCP session can instead return an MCP `400 Missing session ID` response; that means authentication has already passed and the remaining problem is protocol sequencing.
-
----
-
-## 🧪 Local quickstart
-
-### Install
-
-```bash
-git clone https://github.com/devXyi/conduit-mcp.git
-cd conduit-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-### stdio
-
-```bash
-conduit --transport stdio
-```
-
-Example MCP client configuration:
-
-```json
-{
-  "mcpServers": {
-    "conduit": {
-      "command": "conduit",
-      "args": ["--transport", "stdio"]
-    }
-  }
-}
-```
-
-### Streamable HTTP
-
-```bash
-conduit --transport http --host 127.0.0.1 --port 8000
-```
-
-Then use:
-
-```text
-http://127.0.0.1:8000/health
-http://127.0.0.1:8000/mcp
-```
+Opening `/mcp` in a normal browser without a bearer token is expected to fail. A valid token without a valid MCP session can instead return an MCP `400 Missing session ID`; that means authentication passed and the remaining issue is protocol sequencing.
 
 ---
 
 ## 🔐 Security model
 
-Conduit separates **caller authentication** from **content trust**.
+Conduit separates **caller authentication** from **content trust** and **server credential trust**.
 
 ### Caller boundary
 
-Remote HTTP callers are authenticated using OAuth/JWT when HTTP authentication is enabled. Conduit validates:
+Remote HTTP callers are authenticated using OAuth/JWT. Conduit validates:
 
 1. JWT signature against JWKS.
 2. `iss` against the configured issuer.
@@ -257,9 +208,15 @@ Remote HTTP callers are authenticated using OAuth/JWT when HTTP authentication i
 
 Workspace files and GitHub responses can contain adversarial text even when the caller is authenticated. Authentication does not make external content trustworthy.
 
-### Server-side credentials
+### Server credential boundary
 
-Auth0 Management API credentials belong to the Conduit deployment. Remote consumers receive tool capabilities, not Conduit's Management API secret.
+Auth0 Management API credentials are a **deployment-side credential**, not a Conduit MCP capability. The public MCP server does not register Auth0 application-management tools. A token carrying `conduit:read` therefore cannot discover or invoke Auth0 Management API operations.
+
+This is intentional: a general-purpose Conduit caller should not inherit the server's administrative authority merely because the server itself possesses a Management API credential.
+
+### Auth0 Management API least privilege
+
+If internal Auth0 administration is enabled elsewhere in the deployment, the Management API M2M application should receive only the scopes required by that internal operation. In particular, Auth0 documents that `client_secret` and other client key material require `read:client_keys` or `read:client_credentials`; Conduit should not grant those scopes merely to perform ordinary application metadata reads. citeturn3search0turn3search7
 
 ### Current threat posture
 
@@ -270,11 +227,17 @@ Auth0 Management API credentials belong to the Conduit deployment. Remote consum
 | JWT signature/issuer/audience validation | ✅ Implemented + tested |
 | Key rotation | ✅ Tested |
 | Confused-deputy audience mismatch | ✅ Tested |
+| Auth0 admin tools exposed to `conduit:read` callers | ✅ Removed from public MCP surface |
+| Server-side Auth0 credentials delegated to callers | ✅ Not exposed through MCP |
 | Indirect prompt injection | 🟡 Partially mitigated; remains a model-level risk |
 | Unbounded workspace indexing | 🟡 Known limitation |
 | Dynamic external tool registration | ❌ Not supported by design |
 
 **Never commit secrets.** Use local environment variables or `.env` files that are ignored by Git, and Render secret environment variables in deployment.
+
+### Security regression test
+
+The repository contains `tests/test_public_tool_surface.py`, which asserts that the Auth0 application-management tools are absent from the MCP tool list. This protects the credential/trust boundary against accidental re-registration.
 
 ---
 
@@ -292,9 +255,9 @@ Unit/mocked tests:
 pytest -m "not integration"
 ```
 
-The suite covers filesystem boundaries, GitHub behavior, composed workflows, JWT claims, real RS256 JWKS verification, key rotation, stdio communication, Streamable HTTP, and OAuth enforcement.
+The suite covers filesystem boundaries, GitHub behavior, composed workflows, JWT claims, real RS256 JWKS verification, key rotation, stdio communication, Streamable HTTP, OAuth enforcement, and the public-tool security boundary.
 
-The critical integration path is:
+Critical authentication flow:
 
 ```text
 no token        → 401
@@ -387,7 +350,7 @@ conduit-mcp/
 │   ├── cli.py
 │   ├── server.py
 │   ├── auth.py
-│   ├── auth0_admin.py
+│   ├── auth0_admin.py       # internal client; NOT an MCP tool surface
 │   ├── config.py
 │   ├── security.py
 │   ├── resumability.py
@@ -398,6 +361,7 @@ conduit-mcp/
 ├── tests/
 │   ├── test_auth.py
 │   ├── test_auth0_admin.py
+│   ├── test_public_tool_surface.py
 │   ├── test_integration.py
 │   └── mock_auth_server.py
 ├── benchmarks/
@@ -419,7 +383,7 @@ conduit-mcp/
 
 ### One server, two transports
 
-The MCP server and tools are shared. Transport selection happens at the edge.
+The MCP server and public tools are shared. Transport selection happens at the edge.
 
 ### Resource server, not identity provider
 
@@ -427,7 +391,7 @@ Conduit verifies tokens issued by an external authorization server. It does not 
 
 ### Least privilege
 
-Remote consumers should receive only the Conduit scopes and capabilities they need. Auth0 Management API credentials remain internal to the deployment.
+Remote consumers receive only the public Conduit capabilities. Deployment-side Auth0 credentials are kept outside the MCP capability model.
 
 ### Explicit security trade-offs
 
@@ -455,11 +419,12 @@ The current in-memory event store is appropriate for a single process. Horizonta
 - [x] Sandboxed workspace tools
 - [x] Session resumability
 - [x] Remote external-client validation
-- [x] Server-side Auth0 application tools
+- [x] Public MCP credential/trust boundary hardened
+- [x] Regression test preventing Auth0 admin tool exposure
 
 ### Next
 
-- [ ] Granular capability scopes (`conduit:github:read`, `conduit:workspace:write`, etc.)
+- [ ] Granular capability scopes (`conduit:github:read`, `conduit:workspace:write`, etc.) for the public tool surface
 - [ ] Automated live MCP smoke test in release checks
 - [ ] Custom production domain
 - [ ] Better observability and request metrics
