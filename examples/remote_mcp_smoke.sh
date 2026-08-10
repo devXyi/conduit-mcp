@@ -28,13 +28,18 @@ request() {
   local name="$1" data="$2"
   local headers="$workdir/${name}.headers" body="$workdir/${name}.body"
   local status
-  status="$(curl -sS -D "$headers" -o "$body" -w '%{http_code}' "$CONDUIT_URL" \
-    -H "Authorization: Bearer ${TOKEN}" \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json, text/event-stream' \
-    -H 'MCP-Protocol-Version: 2025-06-18' \
-    ${SESSION_HEADER:+-H "$SESSION_HEADER"} \
-    -d "$data")"
+  local -a args=(
+    curl -sS -D "$headers" -o "$body" -w '%{http_code}' "$CONDUIT_URL"
+    -H "Authorization: Bearer ${TOKEN}"
+    -H 'Content-Type: application/json'
+    -H 'Accept: application/json, text/event-stream'
+    -H 'MCP-Protocol-Version: 2025-06-18'
+  )
+  if [ -n "${SESSION_HEADER:-}" ]; then
+    args+=(-H "$SESSION_HEADER")
+  fi
+  args+=(-d "$data")
+  status="$("${args[@]}")"
   printf '%s status: %s\n' "$name" "$status"
   printf '%s' "$status" > "$workdir/${name}.status"
 }
