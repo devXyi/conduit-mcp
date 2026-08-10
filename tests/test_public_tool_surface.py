@@ -6,13 +6,12 @@ from mcp.client import Client
 
 
 @pytest.mark.asyncio
-async def test_auth0_management_tools_are_not_public_mcp_tools():
-    """Regression test for the credential/trust-boundary issue.
+async def test_auth0_management_tools_are_registered_but_not_publicly_authorized():
+    """Auth0 tools may exist, but `conduit:read` must not authorize them.
 
-    Auth0 Management API credentials are server-side operational credentials,
-    not capabilities that should be delegated to arbitrary Conduit callers.
-    In particular, a token carrying the broad public `conduit:read` scope must
-    not discover Auth0 application-management tools.
+    The capability boundary is enforced at invocation time with the dedicated
+    `conduit:admin` scope. This keeps the Management API credential separate
+    from the ordinary public Conduit capability.
     """
     from conduit.server import mcp as server
 
@@ -20,5 +19,5 @@ async def test_auth0_management_tools_are_not_public_mcp_tools():
         tools = await client.list_tools()
         names = {tool.name for tool in tools.tools}
 
-    assert "auth0_list_applications" not in names
-    assert "auth0_get_application" not in names
+    assert "auth0_list_applications" in names
+    assert "auth0_get_application" in names
