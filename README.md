@@ -2,16 +2,16 @@
 
 # ⚡ Conduit MCP
 
-### A serious MCP server for local tools and remote agents.
+### A remote-ready MCP gateway for AI agents.
 
-**One codebase · two transports · real OAuth · GitHub intelligence · resumable sessions**
+**One codebase · two transports · OAuth-protected HTTP · GitHub intelligence · sandboxed tools**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-2.x-111827)](https://modelcontextprotocol.io/)
 [![OAuth](https://img.shields.io/badge/Auth-OAuth%202.1-EB5424?logo=auth0&logoColor=white)](https://auth0.com/)
 [![Render](https://img.shields.io/badge/Hosted%20on-Render-46E3B7?logo=render&logoColor=111827)](https://render.com/)
 
-[**Live service**](https://conduit-mcp-nfmm.onrender.com/) · [**Health**](https://conduit-mcp-nfmm.onrender.com/health) · [**MCP endpoint**](https://conduit-mcp-nfmm.onrender.com/mcp) · [**Documentation site**](https://devxyi.github.io/conduit-mcp/) · [**GitHub**](https://github.com/devXyi/conduit-mcp)
+[**Live service**](https://conduit-mcp-nfmm.onrender.com/) · [**Health**](https://conduit-mcp-nfmm.onrender.com/health) · [**MCP**](https://conduit-mcp-nfmm.onrender.com/mcp) · [**Docs**](https://devxyi.github.io/conduit-mcp/) · [**GitHub**](https://github.com/devXyi/conduit-mcp)
 
 </div>
 
@@ -19,31 +19,65 @@
 
 ## What is Conduit?
 
-Conduit is a Python implementation of the **Model Context Protocol (MCP)** that gives AI agents a controlled workspace, live GitHub lookups, reusable prompts, and composed server-side workflows.
+Conduit is a Python implementation of the **Model Context Protocol (MCP)** that gives AI agents controlled access to a sandboxed workspace, live GitHub lookups, and narrowly scoped server-side integrations.
 
-It exposes the same MCP server over two transport modes:
+It runs the same MCP server over **local stdio** or **remote Streamable HTTP**.
 
 ```text
-                    ┌──────────────────────────┐
-                    │       Conduit Core        │
-                    │                          │
-                    │ tools · prompts ·        │
-                    │ resources · auth ·       │
-                    │ resumability · security  │
-                    └────────────┬─────────────┘
-                                 │
-                  ┌──────────────┴──────────────┐
-                  │                             │
-             local stdio                 Streamable HTTP
-                  │                             │
-          Claude / local agents          remote MCP clients
-                                                │
-                                           OAuth 2.1 / JWT
-                                                │
-                                              Auth0
+                         AI agent / MCP client
+                                  │
+                     ┌────────────┴────────────┐
+                     │                         │
+                  local                    remote
+                   stdio                 Streamable HTTP
+                     │                         │
+                     ▼                         ▼
+                ┌──────────────────────────────────┐
+                │             CONDUIT               │
+                │ MCP server · tools · security    │
+                └───────────────┬──────────────────┘
+                                │
+                  ┌─────────────┼─────────────┐
+                  ▼             ▼             ▼
+              Workspace      GitHub         Auth0
+                tools         tools       admin tools
+                                
+                         OAuth / JWT boundary
+                                │
+                              Auth0
 ```
 
-The transport layer is intentionally thin: the MCP server and its tools stay shared, while `cli.py` decides how bytes move.
+---
+
+## 🟢 Live integration status
+
+Conduit v0.1.0 has been validated end-to-end against the deployed Render service with a **separate Auth0 Machine-to-Machine client**.
+
+Verified flow:
+
+```text
+Auth0 Client Credentials
+        ↓
+Bearer access token
+        ↓
+Conduit /mcp
+        ↓
+MCP initialize
+        ↓
+notifications/initialized
+        ↓
+tools/list
+        ↓
+tools/call
+        ↓
+github_repo_info
+        ↓
+GitHub repository metadata returned
+```
+
+The remote test successfully returned `HTTP 200`, negotiated MCP protocol `2025-06-18`, discovered the deployed tool surface, and executed `github_repo_info` against `devXyi/conduit-mcp` with `isError: false`.
+
+This is an integration proof, not a synthetic health check.
 
 ---
 
@@ -52,30 +86,32 @@ The transport layer is intentionally thin: the MCP server and its tools stay sha
 - **MCP-native** — tools, prompts, resources, and Streamable HTTP.
 - **Two transports** — local `stdio` and network-facing HTTP from the same codebase.
 - **OAuth 2.1 resource-server model** — Conduit verifies bearer JWTs; Auth0 issues them.
-- **JWKS verification** — RS256 signatures, issuer, audience, expiry, `nbf`, `kid`, and required scopes.
-- **Session resumability** — `Last-Event-ID` replay using an in-memory event store.
-- **Sandboxed filesystem** — path traversal and absolute-path escapes are blocked.
-- **GitHub intelligence** — repository metadata, repository search, user profiles, and composed research.
-- **Prompt-injection boundary** — file content is explicitly treated as untrusted data.
-- **Server-side composition** — `research_repo` orchestrates multiple operations concurrently.
-- **Real integration tests** — including a real local JWKS server and authenticated MCP round trips.
-- **Benchmarking** — transport and authentication overhead is measured rather than guessed.
+- **JWKS verification** — signature, issuer, audience, expiry, `nbf`, `kid`, and required scopes.
+- **Resumable HTTP sessions** — bounded event replay using `Last-Event-ID`.
+- **Sandboxed filesystem** — traversal and absolute-path escapes are blocked.
+- **GitHub intelligence** — repository metadata, search, profiles, and composed research.
+- **Server-side Auth0 administration** — narrowly scoped application lookup tools; credentials remain server-side.
+- **Untrusted-content boundary** — external text is treated as data, not trusted instructions.
+- **Real integration tests** — authenticated MCP round trips, local JWKS, key rotation, and protocol behavior.
+- **Reproducible benchmarks** — transport and authentication overhead is measured rather than guessed.
 
 ---
 
-## 🧰 Tools
+## 🧰 Tool surface
 
-| Tool | Purpose |
-|---|---|
-| `read_file(path)` | Read UTF-8 workspace content with an untrusted-content boundary |
-| `write_file(path, content, overwrite=False)` | Create or update workspace files |
-| `list_directory(path=".")` | List files and directories |
-| `search_files(query, path=".")` | Case-insensitive workspace search with line numbers |
-| `index_workspace(path=".")` | Hash files, report size/line counts, and detect exact duplicates |
-| `github_repo_info(owner, repo)` | Live GitHub stars, forks, issues, language, and last-push data |
-| `github_search_repos(query, limit=5)` | Search public GitHub repositories |
-| `github_user_profile(username)` | Fetch a public GitHub profile summary |
-| `research_repo(owner, repo)` | Composed repo research using GitHub + workspace data concurrently |
+| Category | Tool | Purpose |
+|---|---|---|
+| Workspace | `read_file` | Read a UTF-8 file inside the workspace sandbox |
+| Workspace | `write_file` | Write a UTF-8 file inside the workspace sandbox |
+| Workspace | `list_directory` | List files/directories |
+| Workspace | `search_files` | Case-insensitive text search |
+| Workspace | `index_workspace` | Hash files, sizes, line counts, and duplicate detection |
+| GitHub | `github_repo_info` | Live public repository metadata |
+| GitHub | `github_search_repos` | Search public repositories |
+| GitHub | `github_user_profile` | Public GitHub profile summary |
+| GitHub | `research_repo` | Composed repository research workflow |
+| Auth0 | `auth0_list_applications` | List Auth0 applications using Conduit's server-side credentials |
+| Auth0 | `auth0_get_application` | Fetch one Auth0 application by client ID |
 
 ### MCP prompts
 
@@ -91,31 +127,90 @@ The transport layer is intentionally thin: the MCP server and its tools stay sha
 workspace://tree
 ```
 
-A flat, browsable representation of the workspace tree.
+---
+
+## 🚀 Use the hosted Conduit
+
+The production-style Render endpoint is:
+
+```text
+https://conduit-mcp-nfmm.onrender.com/mcp
+```
+
+The HTTP endpoint is OAuth-protected. `/health` is public for liveness checks.
+
+### Remote client model
+
+Each consuming application should use **its own Auth0 credentials**. Never distribute Conduit's server-side Auth0 Management API secret.
+
+```text
+Your application
+      │
+      │ Client Credentials
+      ▼
+    Auth0
+      │
+      │ access token for Conduit
+      ▼
+  Conduit MCP
+      │
+      ├── Workspace
+      ├── GitHub
+      └── server-side Auth0 tools
+```
+
+See [`docs/REMOTE_CLIENT.md`](./docs/REMOTE_CLIENT.md) for the complete remote setup and troubleshooting guide.
+
+### Auth0 configuration used by the deployment
+
+```text
+Issuer:
+https://dev-jf6pbb4exdzatprm.eu.auth0.com/
+
+API audience:
+https://conduit-mcp.onrender.com/mcp
+
+Required scope:
+conduit:read
+```
+
+The OAuth audience is a resource identifier and is intentionally separate from Render's assigned hostname.
+
+### MCP session sequence
+
+A remote Streamable HTTP client should perform:
+
+```text
+1. obtain Auth0 access token
+2. initialize MCP session
+3. keep the returned Mcp-Session-Id
+4. send notifications/initialized
+5. call tools/list or tools/call
+```
+
+Opening `/mcp` in a normal browser without a bearer token is expected to fail. A request with a valid token but without a valid MCP session can instead return an MCP `400 Missing session ID` response; that means authentication has already passed and the remaining problem is protocol sequencing.
 
 ---
 
-## 🚀 Quickstart
+## 🧪 Local quickstart
 
-### 1. Clone and install
+### Install
 
 ```bash
 git clone https://github.com/devXyi/conduit-mcp.git
 cd conduit-mcp
-
 python3 -m venv .venv
 source .venv/bin/activate
-
 pip install -e .
 ```
 
-### 2. Run locally over stdio
+### stdio
 
 ```bash
 conduit --transport stdio
 ```
 
-For Claude Desktop / compatible local MCP clients:
+Example MCP client configuration:
 
 ```json
 {
@@ -128,37 +223,137 @@ For Claude Desktop / compatible local MCP clients:
 }
 ```
 
-### 3. Run locally over HTTP
+### Streamable HTTP
 
 ```bash
 conduit --transport http --host 127.0.0.1 --port 8000
 ```
 
-Then:
+Then use:
 
 ```text
-http://127.0.0.1:8000/
 http://127.0.0.1:8000/health
 http://127.0.0.1:8000/mcp
 ```
 
 ---
 
-## 🌍 Live deployment
+## 🔐 Security model
 
-Conduit is currently deployed as a Python web service on Render.
+Conduit separates **caller authentication** from **content trust**.
 
-| Endpoint | URL |
+### Caller boundary
+
+Remote HTTP callers are authenticated using OAuth/JWT when HTTP authentication is enabled. Conduit validates:
+
+1. JWT signature against JWKS.
+2. `iss` against the configured issuer.
+3. `aud` against the configured resource audience.
+4. `exp` and `nbf` timing claims.
+5. `kid` for signing-key selection.
+6. Required scopes such as `conduit:read`.
+
+### Content boundary
+
+Workspace files and GitHub responses can contain adversarial text even when the caller is authenticated. Authentication does not make external content trustworthy.
+
+### Server-side credentials
+
+Auth0 Management API credentials belong to the Conduit deployment. Remote consumers receive tool capabilities, not Conduit's Management API secret.
+
+### Current threat posture
+
+| Threat | Status |
 |---|---|
-| **Service** | `https://conduit-mcp-nfmm.onrender.com/` |
-| **Health** | `https://conduit-mcp-nfmm.onrender.com/health` |
-| **MCP** | `https://conduit-mcp-nfmm.onrender.com/mcp` |
-| **GitHub** | `https://github.com/devXyi/conduit-mcp` |
-| **Docs / landing page** | `https://devxyi.github.io/conduit-mcp/` |
+| Path traversal | ✅ Mitigated + tested |
+| Absolute-path escape | ✅ Mitigated + tested |
+| JWT signature/issuer/audience validation | ✅ Implemented + tested |
+| Key rotation | ✅ Tested |
+| Confused-deputy audience mismatch | ✅ Tested |
+| Indirect prompt injection | 🟡 Partially mitigated; remains a model-level risk |
+| Unbounded workspace indexing | 🟡 Known limitation |
+| Dynamic external tool registration | ❌ Not supported by design |
 
-### Render configuration
+**Never commit secrets.** Use local environment variables or `.env` files that are ignored by Git, and Render secret environment variables in deployment.
 
-The deployment is defined by [`render.yaml`](./render.yaml):
+---
+
+## 🧪 Tests and CI
+
+Run everything locally:
+
+```bash
+pytest
+```
+
+Unit/mocked tests:
+
+```bash
+pytest -m "not integration"
+```
+
+The suite covers filesystem boundaries, GitHub behavior, composed workflows, JWT claims, real RS256 JWKS verification, key rotation, stdio communication, Streamable HTTP, and OAuth enforcement.
+
+The critical integration path is:
+
+```text
+no token        → 401
+wrong audience  → 401
+valid JWT       → initialize → tools/list → tools/call
+```
+
+---
+
+## ⚡ Benchmarks
+
+The benchmark suite measures the same trivial `list_directory(".")` operation to isolate transport/protocol/auth overhead.
+
+Current reference run:
+
+| Scenario | n | Mean | Median | p95 |
+|---|---:|---:|---:|---:|
+| In-process, no I/O | 30 | **0.69 ms** | 0.67 ms | 0.86 ms |
+| stdio, fresh session/call | 10 | **1036.66 ms** | 1031.43 ms | 1101.65 ms |
+| HTTP, sequential, no auth | 30 | **5.59 ms** | 5.43 ms | 6.85 ms |
+| HTTP, 20 concurrent, no auth | 20 | **262.16 ms** | 274.53 ms | 301.71 ms |
+| HTTP, sequential, auth | 30 | **8.72 ms** | 5.88 ms | 46.34 ms |
+| HTTP, 20 concurrent, auth | 20 | **346.38 ms** | 375.40 ms | 386.37 ms |
+
+Regenerate with:
+
+```bash
+python benchmarks/run_benchmarks.py
+```
+
+The benchmark writes `benchmarks/results.md`. Numbers are directional measurements from the development environment, not performance guarantees.
+
+---
+
+## 📊 Remote smoke test
+
+For a deployed environment, the most useful verification is protocol-level rather than `/health` alone:
+
+```text
+Auth0 token
+   ↓
+POST /mcp + Bearer token
+   ↓
+initialize → 200
+   ↓
+notifications/initialized → 202
+   ↓
+tools/list → 200
+   ↓
+tools/call → 200 + isError:false
+```
+
+The live Render deployment has completed this sequence with a separate external Auth0 client and a real `github_repo_info` invocation.
+
+---
+
+## 🌍 Deployment
+
+The service is defined in [`render.yaml`](./render.yaml).
 
 ```yaml
 services:
@@ -171,184 +366,16 @@ services:
     healthCheckPath: /health
 ```
 
-The deployed service has been validated to start Uvicorn, report `/health` as `200 OK`, and reject unauthenticated `/mcp` requests with an authentication error.
+Current endpoints:
 
-> **Free-tier note:** the Render instance can spin down after inactivity, so the first request after idle time may be slower.
-
----
-
-## 🔐 OAuth 2.1 / Auth0
-
-Conduit is an **OAuth resource server**, not an authorization server. It does not issue tokens or store user credentials. Auth0 handles token issuance; Conduit verifies the resulting JWT on protected MCP requests.
-
-### Current Auth0 configuration
-
-| Setting | Value |
+| Endpoint | URL |
 |---|---|
-| **Issuer** | `https://dev-jf6pbb4exdzatprm.eu.auth0.com/` |
-| **JWKS** | `https://dev-jf6pbb4exdzatprm.eu.auth0.com/.well-known/jwks.json` |
-| **API audience** | `https://conduit-mcp.onrender.com/mcp` |
-| **Required scope** | `conduit:read` |
-| **Application type** | Machine to Machine |
-| **Token flow** | Client Credentials |
+| Service | `https://conduit-mcp-nfmm.onrender.com/` |
+| Health | `https://conduit-mcp-nfmm.onrender.com/health` |
+| MCP | `https://conduit-mcp-nfmm.onrender.com/mcp` |
+| Documentation | `https://devxyi.github.io/conduit-mcp/` |
 
-> **Important:** the Auth0 API audience is an OAuth resource identifier. It does not have to be identical to Render's current assigned hostname. In this deployment the Render URL is `https://conduit-mcp-nfmm.onrender.com`, while the configured Auth0 audience remains `https://conduit-mcp.onrender.com/mcp`.
-
-### Environment variables
-
-```bash
-CONDUIT_AUTH_ISSUER=https://dev-jf6pbb4exdzatprm.eu.auth0.com/
-CONDUIT_AUTH_AUDIENCE=https://conduit-mcp.onrender.com/mcp
-CONDUIT_AUTH_JWKS_URL=https://dev-jf6pbb4exdzatprm.eu.auth0.com/.well-known/jwks.json
-CONDUIT_AUTH_REQUIRED_SCOPES=conduit:read
-```
-
-For GitHub-backed tools:
-
-```bash
-GITHUB_TOKEN=<your-github-token>
-```
-
-**Never commit secrets to Git.** Use environment variables, `.env` locally, and Render's secret environment variables in deployment.
-
-### What Conduit verifies
-
-For protected HTTP requests, Conduit validates:
-
-1. JWT signature against the issuer's JWKS.
-2. `iss` against the configured issuer.
-3. `aud` against the configured MCP resource audience.
-4. `exp` / `nbf` timing claims.
-5. `kid` selection when multiple signing keys are published.
-6. Required OAuth scopes such as `conduit:read`.
-
-This audience check is especially important for preventing a token minted for another resource from being replayed against Conduit.
-
-### Unauthenticated behavior
-
-The public health/status routes remain available for operational checks. The protected MCP endpoint requires a bearer token.
-
-```text
-GET /health
-        │
-        └── 200 OK
-
-POST /mcp
-        │
-        ├── no token ───────────────→ 401 invalid_token
-        │
-        ├── wrong audience ─────────→ 401 invalid_token
-        │
-        └── valid Auth0 token ──────→ MCP session
-```
-
----
-
-## 🧪 Testing
-
-Run the complete test suite:
-
-```bash
-pytest
-```
-
-Run unit/mocked tests without integration tests:
-
-```bash
-pytest -m "not integration"
-```
-
-The test suite covers:
-
-- filesystem read/write/list/search
-- path traversal and absolute-path escape attempts
-- workspace indexing and duplicate detection
-- composed-tool concurrency and partial failures
-- untrusted-content wrapping
-- resumability and event eviction
-- JWT claims and scope mapping
-- real RS256 JWKS verification
-- key rotation and multi-key JWKS selection
-- GitHub response mapping and errors
-- real stdio subprocess communication
-- real Streamable HTTP communication
-- end-to-end OAuth enforcement
-
-The most important end-to-end authentication test is:
-
-```text
-test_integration.py::test_http_transport_enforces_oauth_end_to_end
-```
-
-It validates the actual running Conduit server with:
-
-```text
-no token          → 401
-wrong audience    → 401
-valid JWT         → initialize → list tools → call tool
-```
-
-The local authorization-server fixture also mints real RS256 JWTs and exposes a real JWKS endpoint, including key rotation with an overlap window.
-
----
-
-## ⚡ Benchmarks
-
-Benchmarks use the same trivial `list_directory(".")` operation so the measurements focus on transport/protocol/auth overhead rather than tool complexity.
-
-| Scenario | n | Mean | Median | p95 |
-|---|---:|---:|---:|---:|
-| In-process, no I/O | 30 | **0.69 ms** | 0.67 ms | 0.86 ms |
-| stdio, fresh session/call | 10 | **1036.66 ms** | 1031.43 ms | 1101.65 ms |
-| HTTP, sequential, no auth | 30 | **5.59 ms** | 5.43 ms | 6.85 ms |
-| HTTP, 20 concurrent, no auth | 20 | **262.16 ms** | 274.53 ms | 301.71 ms |
-| HTTP, sequential, with auth | 30 | **8.72 ms** | 5.88 ms | 46.34 ms |
-| HTTP, 20 concurrent, with auth | 20 | **346.38 ms** | 375.40 ms | 386.37 ms |
-
-### How to interpret this
-
-- **In-process** is the protocol-dispatch floor.
-- The large **fresh stdio** number is dominated by Python/process startup, not MCP itself.
-- **HTTP** avoids repeated interpreter startup once a server is already running.
-- Warm-JWKS authentication adds measurable but generally small sequential overhead in this benchmark.
-- The concurrent scenarios create fresh sessions, so they measure connection/session setup under contention rather than sustained throughput.
-
-Regenerate locally with:
-
-```bash
-python benchmarks/run_benchmarks.py
-```
-
-Treat the numbers above as directional measurements from the development environment, not lab-grade performance guarantees.
-
----
-
-## 🛡️ Security model
-
-Conduit treats two boundaries separately:
-
-### Caller boundary
-
-Remote HTTP callers may be untrusted. OAuth/JWT verification protects the MCP endpoint when authentication is configured.
-
-### Content boundary
-
-Workspace files and external GitHub content can contain adversarial text even when the caller is authenticated. File reads therefore cross an explicit untrusted-content boundary before reaching the model.
-
-| Threat | Current status |
-|---|---|
-| Path traversal | ✅ Mitigated + tested |
-| Absolute-path substitution | ✅ Mitigated + tested |
-| Confused deputy / token passthrough | ✅ Audience check + end-to-end test |
-| JWT signature / issuer / audience validation | ✅ Implemented + tested |
-| Key rotation | ✅ Tested |
-| Indirect prompt injection from full file content | 🟡 Partially mitigated |
-| SSRF through shipped GitHub tool | ✅ Not applicable; destination is fixed |
-| Unbounded `index_workspace` size | 🟡 Known limitation |
-| Dynamic external tool registration | ❌ Not supported by design |
-| Unauthenticated HTTP | 🟡 Protected when OAuth is enabled |
-
-Conduit does **not** claim that server-side formatting can make prompt injection impossible. The security boundary is explicit about what it mitigates and what remains a model-level risk.
+> Render's free tier may spin down after inactivity. A cold request can therefore take longer than a warm request.
 
 ---
 
@@ -357,26 +384,30 @@ Conduit does **not** claim that server-side formatting can make prompt injection
 ```text
 conduit-mcp/
 ├── src/conduit/
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── cli.py             # transport + server startup
-│   ├── server.py          # MCP server registration
-│   ├── auth.py            # OAuth/JWT resource-server verification
-│   ├── config.py          # configuration
-│   ├── security.py        # untrusted-content boundaries
-│   ├── resumability.py    # HTTP event store / replay
+│   ├── cli.py
+│   ├── server.py
+│   ├── auth.py
+│   ├── auth0_admin.py
+│   ├── config.py
+│   ├── security.py
+│   ├── resumability.py
 │   └── tools/
-│       ├── files.py       # workspace operations
-│       ├── github.py      # GitHub API client/tools
-│       └── composed.py    # server-side research workflows
+│       ├── files.py
+│       ├── github.py
+│       └── composed.py
 ├── tests/
 │   ├── test_auth.py
-│   ├── test_security.py
-│   ├── test_resumability.py
-│   ├── test_tools_*.py
+│   ├── test_auth0_admin.py
 │   ├── test_integration.py
 │   └── mock_auth_server.py
 ├── benchmarks/
+│   ├── run_benchmarks.py
+│   └── results.md
+├── docs/
+│   ├── index.html
+│   └── REMOTE_CLIENT.md
+├── examples/
+│   └── remote_auth0_token.sh
 ├── render.yaml
 ├── pyproject.toml
 └── README.md
@@ -388,127 +419,62 @@ conduit-mcp/
 
 ### One server, two transports
 
-`server.py` creates one MCP server. The transport choice happens at the edge.
-
-### Tools independent of MCP
-
-Tool logic lives in ordinary Python functions. MCP decorators are thin bindings. This keeps business logic easy to unit test.
+The MCP server and tools are shared. Transport selection happens at the edge.
 
 ### Resource server, not identity provider
 
-Conduit verifies tokens issued by an external authorization server. It intentionally does not implement `/oauth/token` or `/introspect`.
+Conduit verifies tokens issued by an external authorization server. It does not issue credentials.
+
+### Least privilege
+
+Remote consumers should receive only the Conduit scopes and capabilities they need. Auth0 Management API credentials remain internal to the deployment.
 
 ### Explicit security trade-offs
 
-Security decisions are documented as threat-model decisions instead of being hidden behind vague claims like “secure by design.”
+Threat-model limitations are documented instead of hidden behind generic security claims.
 
 ### Server-side composition
 
-`research_repo` demonstrates the difference between an MCP prompt that asks the client/agent to orchestrate multiple calls and a composed tool that performs orchestration inside the server.
+`research_repo` demonstrates server-side orchestration, reducing round trips and keeping composed workflows behind a single MCP capability.
 
-### Resumability with a deliberate scaling boundary
+### Deliberate scaling boundary
 
-The current `InMemoryEventStore` is appropriate for a single-process deployment. Horizontal scaling would require a shared store such as Redis with consistent stream identity.
-
----
-
-## 📦 Configuration
-
-The project targets **Python 3.10+** and currently declares:
-
-```text
-mcp>=2.0.0
-httpx>=0.28
-python-dotenv>=1.0
-pyjwt[crypto]>=2.10
-```
-
-Development dependencies include:
-
-```text
-pytest>=8.0
-pytest-asyncio>=0.24
-```
-
-Common settings:
-
-```bash
-CONDUIT_HOST=127.0.0.1
-CONDUIT_PORT=8000
-CONDUIT_WORKSPACE=./workspace
-
-# Optional GitHub access
-GITHUB_TOKEN=<token>
-
-# Optional HTTP authentication
-CONDUIT_AUTH_ISSUER=<issuer>
-CONDUIT_AUTH_AUDIENCE=<resource-audience>
-CONDUIT_AUTH_JWKS_URL=<jwks-url>
-CONDUIT_AUTH_REQUIRED_SCOPES=conduit:read
-```
+The current in-memory event store is appropriate for a single process. Horizontal scaling will require shared event/session state such as Redis.
 
 ---
 
 ## 🗺️ Roadmap
 
-- [x] MCP tools / prompts / resource
-- [x] stdio transport
+### v0.1 — Core remote MCP
+
+- [x] Local stdio transport
 - [x] Streamable HTTP transport
-- [x] Workspace sandboxing
-- [x] GitHub integration
-- [x] Server-side composed tool
-- [x] Session resumability
-- [x] OAuth/JWT verification
+- [x] OAuth/JWT resource-server authentication
 - [x] Auth0 integration
-- [x] Real JWKS integration tests
-- [x] Render deployment
-- [x] Public health endpoint
-- [x] Benchmark suite
-- [ ] Production-grade shared event store for horizontal scaling
-- [ ] Stronger resource-consumption limits for very large workspaces
-- [ ] Broader integration coverage across MCP clients
+- [x] GitHub tools
+- [x] Sandboxed workspace tools
+- [x] Session resumability
+- [x] Remote external-client validation
+- [x] Server-side Auth0 application tools
+
+### Next
+
+- [ ] Granular capability scopes (`conduit:github:read`, `conduit:workspace:write`, etc.)
+- [ ] Automated live MCP smoke test in release checks
+- [ ] Custom production domain
+- [ ] Better observability and request metrics
+- [ ] Broader GitHub read capabilities
+- [ ] Security hardening audit
+- [ ] Public v0.1.0 release notes and MCP-directory distribution
 
 ---
 
-## 📚 Learn more
+## 📄 License
 
-- **Project site:** https://devxyi.github.io/conduit-mcp/
-- **Repository:** https://github.com/devXyi/conduit-mcp
-- **Live service:** https://conduit-mcp-nfmm.onrender.com/
-- **MCP endpoint:** https://conduit-mcp-nfmm.onrender.com/mcp
-- **Model Context Protocol:** https://modelcontextprotocol.io/
-- **Auth0:** https://auth0.com/
-- **Render:** https://render.com/
-
----
-
-## ⚠️ Production notes
-
-Conduit is currently a serious engineering project and working deployed service, but it should not be mistaken for a fully hardened multi-tenant production platform.
-
-Before a high-risk production deployment, review at minimum:
-
-- secret rotation and credential storage
-- rate limiting and abuse controls
-- workspace size/resource quotas
-- distributed session/event storage
-- observability and alerting
-- deployment rollback strategy
-- tenant isolation requirements
-- GitHub token scope and rotation policy
-
----
-
-## License
-
-See the repository for the current project licensing terms.
-
----
+See [`LICENSE`](./LICENSE).
 
 <div align="center">
 
-### Built to make MCP systems easier to build, test, secure, and deploy.
-
-**Conduit MCP · one server · two transports · real security boundaries.**
+**Conduit — a controlled conduit between AI agents and external capabilities.**
 
 </div>
