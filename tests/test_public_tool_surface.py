@@ -4,8 +4,6 @@ import pytest
 
 from mcp.client import Client
 
-pytestmark = pytest.mark.integration
-
 
 @pytest.mark.asyncio
 async def test_auth0_management_tools_are_not_public_mcp_tools():
