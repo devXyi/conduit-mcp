@@ -1,14 +1,9 @@
 """The Conduit MCP server: tool, prompt, and resource definitions.
 
-This module owns the single `MCPServer` instance. `conduit.cli` imports
-`mcp` from here and runs it over whichever transport was requested. Every
-tool below is a thin wrapper around a plain function in `conduit.tools` —
-this module is the only place that imports `mcp` itself.
-
-Security boundary: Conduit's public MCP surface contains workspace and public
-GitHub capabilities only. Auth0 Management API credentials, when configured
-for internal operational use, are deliberately NOT exposed as MCP tools.
-They therefore cannot be reached by a remote caller with `conduit:read`.
+Remote callers authenticate with `conduit:read` for the ordinary public tool
+surface. Auth0 Management API tools, when configured, are separately gated by
+`conduit:admin` at the tool boundary. Possessing a server-side Auth0 Management
+API credential never grants that capability to a normal Conduit caller.
 """
 
 from __future__ import annotations
@@ -20,7 +15,8 @@ from starlette.responses import HTMLResponse, JSONResponse
 
 from mcp.server.mcpserver import Context, MCPServer
 
-from .auth import build_auth
+from .auth import build_auth, require_scope
+from .auth0_admin import Auth0AdminClient
 from .config import load_config
 from .security import wrap_untrusted_content
 from .tools.composed import research_repo as _research_repo
@@ -30,6 +26,7 @@ from .tools.github import GitHubClient
 config = load_config()
 workspace = Workspace(config.workspace_root)
 github = GitHubClient(token=config.github_token)
+auth0_admin = Auth0AdminClient(config.auth0_admin) if config.auth0_admin else None
 _auth_settings, _token_verifier = build_auth(config.auth)
 
 mcp = MCPServer(
@@ -41,8 +38,8 @@ mcp = MCPServer(
         "list_directory, search_files) rooted in one workspace directory, plus "
         "live public GitHub lookups (github_repo_info, github_search_repos, "
         "github_user_profile). File paths are always relative to the workspace "
-        "root; attempts to escape it are rejected. Auth0 Management API credentials, "
-        "if configured for internal operations, are never exposed through MCP tools."
+        "root; attempts to escape it are rejected. Auth0 Management API tools, "
+        "when enabled, require the separate conduit:admin capability."
     ),
     auth=_auth_settings,
     token_verifier=_token_verifier,
@@ -109,6 +106,24 @@ async def index_workspace(path: str = ".", ctx: Context | None = None) -> dict:
     return await workspace.index(path, progress_cb=report)
 
 
+@mcp.tool()
+async def auth0_list_applications(page: int = 0, per_page: int = 100, ctx: Context | None = None) -> list[dict]:
+    """List Auth0 applications; requires the separate conduit:admin capability."""
+    require_scope(ctx, "conduit:admin")
+    if auth0_admin is None:
+        raise RuntimeError("Auth0 Management API administration is not configured")
+    return await auth0_admin.list_clients(page=page, per_page=per_page)
+
+
+@mcp.tool()
+async def auth0_get_application(client_id: str, ctx: Context | None = None) -> dict:
+    """Read an Auth0 application; requires the separate conduit:admin capability."""
+    require_scope(ctx, "conduit:admin")
+    if auth0_admin is None:
+        raise RuntimeError("Auth0 Management API administration is not configured")
+    return await auth0_admin.get_client(client_id)
+
+
 @mcp.prompt()
 def summarize_workspace_file(path: str) -> str:
     """Summarize a file from the workspace."""
@@ -149,11 +164,7 @@ def workspace_tree() -> str:
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request) -> JSONResponse:
-    return JSONResponse({
-        "status": "ok",
-        "server": mcp.name,
-        "version": mcp.version,
-    })
+    return JSONResponse({"status": "ok", "server": mcp.name, "version": mcp.version})
 
 
 @mcp.custom_route("/", methods=["GET"])
