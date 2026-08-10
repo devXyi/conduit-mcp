@@ -28,16 +28,17 @@ Conduit MCP
       |
       +--> workspace tools
       +--> GitHub tools
-      +--> Auth0 admin tools (deployment-controlled)
 ```
 
 Conduit is the OAuth **resource server**. Auth0 is the authorization server.
+
+**Important security boundary:** Auth0 Management API credentials, if present in the Conduit deployment for internal operations, are not exposed as MCP tools. A remote caller with `conduit:read` cannot inherit the deployment's Auth0 administrative authority.
 
 ## 1. Create an Auth0 Machine-to-Machine application
 
 In the Auth0 tenant, create a Machine-to-Machine application for your own integration.
 
-Authorize that application to the Conduit API with the scope:
+Authorize that application to the Conduit API with:
 
 ```text
 conduit:read
@@ -56,7 +57,7 @@ Scope:
 conduit:read
 ```
 
-The audience above is the configured OAuth resource identifier. It is intentionally separate from Render's assigned hostname (`conduit-mcp-nfmm.onrender.com`).
+The audience is the configured OAuth resource identifier and is intentionally separate from Render's assigned hostname.
 
 ## 2. Request an access token
 
@@ -78,19 +79,7 @@ TOKEN=$(curl -sS --request POST "https://${AUTH0_DOMAIN}/oauth/token" \
 
 Never paste a client secret or access token into source control, README files, screenshots, or public issues.
 
-## 3. Call a protected Conduit endpoint
-
-A simple authenticated request to the MCP endpoint should include the bearer token:
-
-```bash
-curl -i "https://conduit-mcp-nfmm.onrender.com/mcp" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Accept: application/json, text/event-stream"
-```
-
-Opening `/mcp` in a normal browser without a token is expected to produce an authentication error. That does **not** mean the server is down.
-
-## 4. Connect from an MCP client
+## 3. Connect from an MCP client
 
 For an MCP client that supports remote Streamable HTTP plus OAuth, use:
 
@@ -98,7 +87,7 @@ For an MCP client that supports remote Streamable HTTP plus OAuth, use:
 https://conduit-mcp-nfmm.onrender.com/mcp
 ```
 
-The client should discover the protected-resource metadata and obtain an access token for the configured audience. Client-specific UI varies, so do not put a Conduit client secret into a shared MCP configuration.
+The client should discover the protected-resource metadata and obtain an access token for the configured audience.
 
 ### Local development instead
 
@@ -115,9 +104,7 @@ If the consumer wants to run Conduit locally, stdio remains available:
 }
 ```
 
-## 5. Reproduce the full remote smoke test
-
-The repository includes a credential-safe shell smoke test that performs the same sequence used to validate the live deployment:
+## 4. Reproduce the full remote smoke test
 
 ```bash
 export AUTH0_DOMAIN="dev-jf6pbb4exdzatprm.eu.auth0.com"
@@ -138,37 +125,14 @@ MCP initialize → 200
     ↓
 notifications/initialized → 202
     ↓
-tools/list → github_repo_info advertised
+tools/list → public Conduit tools
     ↓
 tools/call → 200 + isError:false
 ```
 
 It never prints the client secret or access token.
 
-## What a successful integration looks like
-
-```text
-GET  /health
-     -> 200 OK
-
-POST /mcp without token
-     -> 401 invalid_token
-
-POST /mcp with token for another audience
-     -> 401 invalid_token
-
-POST /mcp with valid Auth0 token + conduit:read
-     -> initialize
-     -> session established
-     -> tools/list
-     -> tool calls
-```
-
-A valid token sent without the required MCP session sequence can return `400 Missing session ID`. That indicates the request reached the MCP protocol layer; continue with `initialize` and the returned `Mcp-Session-Id`.
-
-## Current remote tool surface
-
-The deployed server currently exposes the core Conduit workspace/GitHub tools plus the narrowly scoped Auth0 Management API tools:
+## Current public remote tool surface
 
 - `read_file`
 - `write_file`
@@ -179,16 +143,18 @@ The deployed server currently exposes the core Conduit workspace/GitHub tools pl
 - `github_search_repos`
 - `github_user_profile`
 - `research_repo`
-- `auth0_list_applications`
-- `auth0_get_application`
 
-The Auth0 Management API credentials belong to the **Conduit deployment**, not to remote consumers. Remote consumers only receive the capabilities exposed through Conduit's MCP tool layer.
+Auth0 application-management operations are **not** part of this list. The repository contains an internal Auth0 Management API client, but it is deliberately not registered as an MCP tool.
 
 ## Security boundary
 
 Conduit validates the caller's JWT before allowing protected MCP access. It checks the signing key through JWKS and validates issuer, audience, time claims, key ID, and required scopes.
 
-GitHub and workspace content should still be treated as potentially untrusted text. Authentication proves who called Conduit; it does not make external content trustworthy.
+Authentication proves who called Conduit; it does not make GitHub or workspace content trustworthy.
+
+The deployment-side Auth0 Management API credential is a separate trust domain. It must not be treated as a capability granted to MCP callers.
+
+Auth0 also documents that sensitive client key material such as `client_secret` requires `read:client_keys` or `read:client_credentials`, while ordinary client metadata uses less-privileged scopes. Internal Management API clients should therefore be granted only the minimum scopes needed for their specific backend operation. citeturn3search0turn3search7
 
 ## Troubleshooting
 
@@ -212,7 +178,7 @@ Also verify that the Auth0 application is authorized for the Conduit API and has
 
 ### `400 Bad Request: Missing session ID`
 
-Authentication has reached the MCP layer, but the request is missing the session established by `initialize`. Run `initialize`, capture the returned `mcp-session-id`, then send `notifications/initialized` and subsequent tool calls with that session ID.
+Authentication reached the MCP layer, but the request is missing the session established by `initialize`. Run `initialize`, capture the returned `mcp-session-id`, then send `notifications/initialized` and subsequent tool calls with that session ID.
 
 ### `/health` works but `/mcp` does not
 
