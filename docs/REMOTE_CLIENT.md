@@ -71,7 +71,9 @@ export CONDUIT_AUDIENCE="https://conduit-mcp.onrender.com/mcp"
 TOKEN=$(curl -sS --request POST "https://${AUTH0_DOMAIN}/oauth/token" \
   --header "content-type: application/json" \
   --data "{\"client_id\":\"${CLIENT_ID}\",\"client_secret\":\"${CLIENT_SECRET}\",\"audience\":\"${CONDUIT_AUDIENCE}\",\"grant_type\":\"client_credentials\"}" \
-  | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+
+[ -n "$TOKEN" ] || { echo "Auth0 did not return an access token" >&2; exit 1; }
 ```
 
 Never paste a client secret or access token into source control, README files, screenshots, or public issues.
@@ -113,6 +115,36 @@ If the consumer wants to run Conduit locally, stdio remains available:
 }
 ```
 
+## 5. Reproduce the full remote smoke test
+
+The repository includes a credential-safe shell smoke test that performs the same sequence used to validate the live deployment:
+
+```bash
+export AUTH0_DOMAIN="dev-jf6pbb4exdzatprm.eu.auth0.com"
+export CLIENT_ID="your-client-id"
+export CLIENT_SECRET="your-client-secret"
+export CONDUIT_URL="https://conduit-mcp-nfmm.onrender.com/mcp"
+export CONDUIT_AUDIENCE="https://conduit-mcp.onrender.com/mcp"
+
+bash examples/remote_mcp_smoke.sh
+```
+
+The script verifies:
+
+```text
+Auth0 token
+    ↓
+MCP initialize → 200
+    ↓
+notifications/initialized → 202
+    ↓
+tools/list → github_repo_info advertised
+    ↓
+tools/call → 200 + isError:false
+```
+
+It never prints the client secret or access token.
+
 ## What a successful integration looks like
 
 ```text
@@ -126,10 +158,13 @@ POST /mcp with token for another audience
      -> 401 invalid_token
 
 POST /mcp with valid Auth0 token + conduit:read
-     -> authenticated MCP session
+     -> initialize
+     -> session established
      -> tools/list
      -> tool calls
 ```
+
+A valid token sent without the required MCP session sequence can return `400 Missing session ID`. That indicates the request reached the MCP protocol layer; continue with `initialize` and the returned `Mcp-Session-Id`.
 
 ## Current remote tool surface
 
@@ -174,6 +209,10 @@ https://conduit-mcp.onrender.com/mcp
 ```
 
 Also verify that the Auth0 application is authorized for the Conduit API and has `conduit:read`.
+
+### `400 Bad Request: Missing session ID`
+
+Authentication has reached the MCP layer, but the request is missing the session established by `initialize`. Run `initialize`, capture the returned `mcp-session-id`, then send `notifications/initialized` and subsequent tool calls with that session ID.
 
 ### `/health` works but `/mcp` does not
 
