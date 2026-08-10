@@ -9,30 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
+from .config import Auth0AdminConfig
+
 
 class Auth0AdminError(RuntimeError):
     """Raised when the Auth0 Management API cannot be reached or rejects a request."""
-
-
-@dataclass(frozen=True)
-class Auth0AdminConfig:
-    domain: str
-    client_id: str
-    client_secret: str
-    audience: str
-
-    @property
-    def token_url(self) -> str:
-        return f"https://{self.domain.rstrip('/')}/oauth/token"
-
-    @property
-    def management_base_url(self) -> str:
-        return f"https://{self.domain.rstrip('/')}/api/v2"
 
 
 class Auth0AdminClient:
@@ -90,14 +75,10 @@ class Auth0AdminClient:
         token = await self._get_access_token()
         headers = dict(kwargs.pop("headers", {}) or {})
         headers["Authorization"] = f"Bearer {token}"
+        url = f"{self.config.management_base_url}/{path.lstrip('/')}"
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.request(
-                    method,
-                    f"{self.config.management_base_url}/{path.lstrip('/')}",
-                    headers=headers,
-                    **kwargs,
-                )
+                response = await client.request(method, url, headers=headers, **kwargs)
         except httpx.HTTPError as exc:
             raise Auth0AdminError(f"Auth0 Management API request failed: {exc}") from exc
 
@@ -110,12 +91,7 @@ class Auth0AdminClient:
             headers["Authorization"] = f"Bearer {token}"
             try:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.request(
-                        method,
-                        f"{self.config.management_base_url}/{path.lstrip('/')}",
-                        headers=headers,
-                        **kwargs,
-                    )
+                    response = await client.request(method, url, headers=headers, **kwargs)
             except httpx.HTTPError as exc:
                 raise Auth0AdminError(f"Auth0 Management API retry failed: {exc}") from exc
 
