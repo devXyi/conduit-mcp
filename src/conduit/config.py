@@ -28,6 +28,14 @@ class Auth0AdminConfig:
     client_secret: str
     audience: str
 
+    @property
+    def token_url(self) -> str:
+        return f"https://{self.domain.rstrip('/')}/oauth/token"
+
+    @property
+    def management_base_url(self) -> str:
+        return f"https://{self.domain.rstrip('/')}/api/v2"
+
 
 @dataclass(frozen=True)
 class ConduitConfig:
