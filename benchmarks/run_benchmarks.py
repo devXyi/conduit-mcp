@@ -1,23 +1,14 @@
 """Benchmarks for Conduit: real numbers, not claims.
 
-Four scenarios, each isolating a different cost:
+Four scenarios isolate different costs:
 
-  1. in-process    — MCP dispatch overhead alone: no subprocess, no socket,
-                      no network. The floor everything else is measured against.
-  2. stdio          — one full session per call: subprocess spawn + Python
-                      interpreter startup + stdio handshake + one tool call.
-                      This is the cost of *connecting*, not of the call itself.
-  3. http           — one persistent connection, many sequential calls, then
-                      the same calls fired concurrently. This is the cost of
-                      the call itself, once a connection already exists.
-  4. http+auth      — identical to (3), but against a server with OAuth
-                      token verification turned on, to isolate what that
-                      actually costs per call rather than asserting it's cheap.
+  1. in-process    — MCP dispatch overhead alone.
+  2. stdio          — one full session per call: subprocess + interpreter startup + handshake + tool call.
+  3. http           — persistent connection, sequential calls, then fresh concurrent sessions.
+  4. http+auth      — identical HTTP scenarios with OAuth/JWT verification enabled.
 
-Run with:  python benchmarks/run_benchmarks.py
-Writes a results table to benchmarks/results.md (overwritten each run) in
-addition to printing it, so the numbers in the README can be regenerated
-rather than hand-typed.
+Run with: python benchmarks/run_benchmarks.py
+Results are also written to benchmarks/results.md so README numbers can be regenerated.
 """
 
 from __future__ import annotations
@@ -66,10 +57,17 @@ class Stats:
     def p95(self) -> float:
         return statistics.quantiles(self.samples_ms, n=20)[18] if len(self.samples_ms) >= 20 else max(self.samples_ms)
 
+    @property
+    def p99(self) -> float:
+        if len(self.samples_ms) < 100:
+            return max(self.samples_ms)
+        return statistics.quantiles(self.samples_ms, n=100)[98]
+
     def row(self) -> str:
         return (
             f"| {self.label} | {len(self.samples_ms)} | {self.mean:.2f} | "
-            f"{self.median:.2f} | {self.p95:.2f} | {min(self.samples_ms):.2f} | {max(self.samples_ms):.2f} |"
+            f"{self.median:.2f} | {self.p95:.2f} | {self.p99:.2f} | "
+            f"{min(self.samples_ms):.2f} | {max(self.samples_ms):.2f} |"
         )
 
 
@@ -91,11 +89,6 @@ async def free_port() -> int:
         return s.getsockname()[1]
 
 
-# ---------------------------------------------------------------------------
-# Scenario 1: in-process
-# ---------------------------------------------------------------------------
-
-
 async def bench_in_process() -> Stats:
     from conduit.server import mcp as server
 
@@ -109,11 +102,6 @@ async def bench_in_process() -> Stats:
         )
 
 
-# ---------------------------------------------------------------------------
-# Scenario 2: stdio — full session per call, on purpose
-# ---------------------------------------------------------------------------
-
-
 async def one_stdio_session_call() -> None:
     params = StdioServerParameters(command=sys.executable, args=["-m", "conduit", "--transport", "stdio"], cwd=str(PROJECT_ROOT))
     async with stdio_client(params) as (read, write):
@@ -125,12 +113,7 @@ async def one_stdio_session_call() -> None:
 async def bench_stdio() -> Stats:
     for _ in range(WARMUP_ITERATIONS):
         await one_stdio_session_call()
-    return await time_calls("stdio (fresh session/call)", 10, one_stdio_session_call)  # fewer: each spawns a process
-
-
-# ---------------------------------------------------------------------------
-# Scenario 3 & 4: HTTP, with and without auth
-# ---------------------------------------------------------------------------
+    return await time_calls("stdio (fresh session/call)", 10, one_stdio_session_call)
 
 
 class HttpServerHandle:
@@ -150,10 +133,6 @@ class HttpServerHandle:
 async def start_http_server(*, env_extra: dict | None = None) -> HttpServerHandle:
     port = await free_port()
     env = {**os.environ, **(env_extra or {})}
-    # If auth is being configured, the audience MUST match the port chosen
-    # above — config.py's own default (http://<CONDUIT_HOST>:<CONDUIT_PORT>/mcp)
-    # only lines up by coincidence, since --port here is a CLI arg, not the
-    # CONDUIT_PORT env var config.py's default reads. Set it explicitly.
     if "CONDUIT_AUTH_ISSUER" in env and "CONDUIT_AUTH_AUDIENCE" not in env:
         env["CONDUIT_AUTH_AUDIENCE"] = f"http://127.0.0.1:{port}/mcp"
     proc = await asyncio.create_subprocess_exec(
@@ -203,25 +182,19 @@ async def bench_http_concurrent(url: str, http_client_factory, label: str, n: in
     return Stats(label, list(samples))
 
 
-# ---------------------------------------------------------------------------
-
-
 async def main() -> None:
     results: list[Stats] = []
 
     print("Running in-process benchmark...")
     results.append(await bench_in_process())
 
-    print("Running stdio benchmark (10 fresh subprocess sessions — slow on purpose)...")
+    print("Running stdio benchmark (10 fresh subprocess sessions)...")
     results.append(await bench_stdio())
 
     print("Starting HTTP server (no auth)...")
     http = await start_http_server()
     try:
-        print("Running HTTP sequential benchmark...")
         results.append(await bench_http_sequential(http.url, httpx.AsyncClient(), "HTTP, sequential, no auth"))
-
-        print(f"Running HTTP concurrent benchmark ({CONCURRENCY} simultaneous sessions)...")
         results.append(await bench_http_concurrent(http.url, httpx.AsyncClient, f"HTTP, {CONCURRENCY} concurrent, no auth", CONCURRENCY))
     finally:
         await http.stop()
@@ -245,21 +218,15 @@ async def main() -> None:
     try:
         token = mock_as.mint_token(audience=authed_http.url)
         authed_client_factory = lambda: httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"})  # noqa: E731
-
-        print("Running HTTP sequential benchmark (auth ON)...")
         results.append(await bench_http_sequential(authed_http.url, authed_client_factory(), "HTTP, sequential, WITH auth"))
-
-        print(f"Running HTTP concurrent benchmark (auth ON, {CONCURRENCY} simultaneous sessions)...")
-        results.append(
-            await bench_http_concurrent(authed_http.url, authed_client_factory, f"HTTP, {CONCURRENCY} concurrent, WITH auth", CONCURRENCY)
-        )
+        results.append(await bench_http_concurrent(authed_http.url, authed_client_factory, f"HTTP, {CONCURRENCY} concurrent, WITH auth", CONCURRENCY))
     finally:
         await authed_http.stop()
         uv_server.should_exit = True
         await as_task
 
-    header = "| Scenario | n | mean (ms) | median (ms) | p95 (ms) | min (ms) | max (ms) |\n"
-    header += "|---|---|---|---|---|---|---|\n"
+    header = "| Scenario | n | mean (ms) | median (ms) | p95 (ms) | p99 (ms) | min (ms) | max (ms) |\n"
+    header += "|---|---:|---:|---:|---:|---:|---:|---:|\n"
     table = header + "\n".join(r.row() for r in results)
 
     print("\n" + table + "\n")
@@ -269,10 +236,9 @@ async def main() -> None:
         "# Conduit benchmark results\n\n"
         f"Machine: {os.uname().sysname} {os.uname().machine}, Python {sys.version.split()[0]}\n\n"
         f"Warmup: {WARMUP_ITERATIONS} discarded iterations where applicable. "
-        f"Timed iterations: {TIMED_ITERATIONS} (stdio: 10, given each spawns a process). "
-        f"Concurrent scenarios: {CONCURRENCY} simultaneous sessions.\n\n"
-        f"All calls are `list_directory(\".\")` against the same near-empty workspace, "
-        f"so every scenario is measuring transport/protocol/auth overhead, not tool work.\n\n"
+        f"Timed iterations: {TIMED_ITERATIONS} (stdio: 10). Concurrent scenarios: {CONCURRENCY} simultaneous sessions.\n\n"
+        "All calls are `list_directory(\".\")` against the same near-empty workspace, "
+        "so every scenario is measuring transport/protocol/auth overhead, not tool work.\n\n"
         + table
         + "\n"
     )
