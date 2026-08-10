@@ -13,12 +13,20 @@ services:
       - key: CONDUIT_WORKSPACE
         value: /tmp/conduit-workspace
       - key: CONDUIT_AUTH_ISSUER
-        sync: false
+        value: https://dev-jf6pbb4exdzatprm.eu.auth0.com/
       - key: CONDUIT_AUTH_AUDIENCE
         value: https://conduit-mcp.onrender.com/mcp
       - key: CONDUIT_AUTH_JWKS_URL
-        sync: false
+        value: https://dev-jf6pbb4exdzatprm.eu.auth0.com/.well-known/jwks.json
       - key: CONDUIT_AUTH_REQUIRED_SCOPES
         value: conduit:read
+      - key: AUTH0_DOMAIN
+        value: dev-jf6pbb4exdzatprm.eu.auth0.com
+      - key: AUTH0_CLIENT_ID
+        sync: false
+      - key: AUTH0_CLIENT_SECRET
+        sync: false
+      - key: AUTH0_AUDIENCE
+        value: https://dev-jf6pbb4exdzatprm.eu.auth0.com/api/v2/
       - key: GITHUB_TOKEN
         sync: false
